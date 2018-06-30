@@ -1,9 +1,9 @@
 //! This module contains tools for manipulating a puzzle map.
 
-use point;
-use point::Point;
+use point::{self, Point};
 use rand;
 use std::collections::HashSet;
+use std::io::{self, Write};
 use std::vec::Vec;
 
 /// Represents the completion state of a puzzle.
@@ -72,24 +72,26 @@ impl Map {
         self.mines_remaining
     }
 
-    pub fn print(&self, revealed: bool) {
+    pub fn print(&self, writer: &mut Write, revealed: bool) -> io::Result<()> {
         for i in 0..self.get_tiles().len() {
             if (i % self.width as usize) == 0 {
-                print!("\n");
+                write!(writer, "\n")?;
             }
             if self.get_tile(i).flipped || revealed {
                 if self.get_tile(i).mine {
-                    print!("*");
+                    write!(writer, "*")?;
                 } else {
-                    print!("{}", self.get_tile(i).value);
+                    write!(writer, "{}", self.get_tile(i).value)?;
                 }
             } else if self.get_tile(i).flagged {
-                print!("^");
+                write!(writer, "^")?;
             } else {
-                print!("#");
+                write!(writer, "#")?;
             }
         }
-        print!("\n");
+        write!(writer, "\n")?;
+
+        Ok(())
     }
 
     /// Flags or unflags a tile at the given `position`.
@@ -229,7 +231,7 @@ pub fn generate_map_with_difficulty(width: u16, height: u16, difficulty: u8, cli
     }
 
     // Return the constructed map.
-    Map {
+    let mut map = Map {
         width,
         height,
         total_mines,
@@ -237,7 +239,9 @@ pub fn generate_map_with_difficulty(width: u16, height: u16, difficulty: u8, cli
         tiles_flipped: 0,
         status: Status::InProgress,
         tiles,
-    }
+    };
+    map.flip_recurse(&click);
+    map
 }
 
 /// Generate a map with given mine locations.
@@ -279,5 +283,122 @@ pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -
         tiles_flipped: 0,
         status: Status::InProgress,
         tiles,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use map;
+    use point;
+    use std::collections::HashSet;
+    use std::str;
+
+    #[test]
+    fn test_generate_puzzle() {
+        let map = map::generate_map_with_difficulty(10, 10, 100, point::Point { x: 5, y: 5 });
+
+        assert_eq!(10, map.get_width());
+        assert_eq!(10, map.get_height());
+        assert_eq!(100, map.get_size());
+        assert!(map.get_mines_remaining() >= 5);
+    }
+
+    #[test]
+    fn test_mine_flip() {
+        let mines: HashSet<point::Point> = [
+            point::Point { x: 3, y: 1 },
+            point::Point { x: 4, y: 2 },
+            point::Point { x: 1, y: 1 },
+            point::Point { x: 2, y: 2 },
+            point::Point { x: 4, y: 4 },
+        ].iter()
+            .cloned()
+            .collect();
+        let mut map = map::generate_map_with_mines(5, 5, mines);
+        assert_eq!(map::Status::InProgress, *map.get_status());
+        map.flip(&point::Point { x: 4, y: 4 });
+        assert_eq!(map::Status::Failed, *map.get_status());
+    }
+
+    #[test]
+    fn test_group_flip() {
+        let mines: HashSet<point::Point> = [
+            point::Point { x: 0, y: 0 },
+            point::Point { x: 1, y: 1 },
+            point::Point { x: 2, y: 2 },
+            point::Point { x: 3, y: 3 },
+            point::Point { x: 4, y: 4 },
+        ].iter()
+            .cloned()
+            .collect();
+        let mut map = map::generate_map_with_mines(5, 5, mines);
+
+        map.flip(&point::Point { x: 4, y: 0 });
+        assert_eq!(8, map.get_tiles_flipped());
+
+        map.flip(&point::Point { x: 0, y: 4 });
+        assert_eq!(16, map.get_tiles_flipped());
+
+        assert_eq!(map::Status::InProgress, *map.get_status());
+    }
+
+    #[test]
+    fn test_fist_flip() {
+        let map = map::generate_map_with_difficulty(10, 10, 100, point::Point { x: 5, y: 5 });
+
+        assert!(map.get_tiles_flipped() > 0);
+        assert!(*map.get_status() != map::Status::Failed);
+    }
+
+    #[test]
+    fn test_print() {
+        let mines: HashSet<point::Point> = [
+            point::Point { x: 0, y: 0 },
+            point::Point { x: 1, y: 0 },
+            point::Point { x: 2, y: 0 },
+            point::Point { x: 3, y: 1 },
+            point::Point { x: 4, y: 1 },
+            point::Point { x: 5, y: 1 },
+            point::Point { x: 7, y: 1 },
+            point::Point { x: 8, y: 1 },
+            point::Point { x: 2, y: 2 },
+            point::Point { x: 6, y: 2 },
+            point::Point { x: 9, y: 2 },
+            point::Point { x: 0, y: 4 },
+            point::Point { x: 2, y: 5 },
+            point::Point { x: 4, y: 5 },
+            point::Point { x: 5, y: 5 },
+            point::Point { x: 8, y: 5 },
+            point::Point { x: 9, y: 5 },
+            point::Point { x: 1, y: 6 },
+            point::Point { x: 9, y: 6 },
+            point::Point { x: 0, y: 7 },
+            point::Point { x: 1, y: 7 },
+            point::Point { x: 4, y: 7 },
+            point::Point { x: 4, y: 8 },
+            point::Point { x: 3, y: 9 },
+            point::Point { x: 8, y: 9 },
+        ].iter()
+            .cloned()
+            .collect();
+        let mut map = map::generate_map_with_mines(10, 10, mines);
+        map.flag(&point::Point { x: 6, y: 3 });
+        map.flip(&point::Point { x: 6, y: 9 });
+        map.flip(&point::Point { x: 0, y: 2 });
+        map.flag(&point::Point { x: 3, y: 9 });
+        map.flip(&point::Point { x: 8, y: 5 });
+
+        let mut output = Vec::new();
+        map.print(&mut output, false).unwrap();
+
+        let string = match str::from_utf8(&output) {
+            Ok(s) => s,
+            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+        };
+
+        assert_eq!(
+            "\n##########\n24########\n01########\n12####^###\n##########\n########*#\n#####3113#\n#####2001#\n#####2011#\n###^#101##\n",
+            string
+        );
     }
 }

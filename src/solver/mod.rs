@@ -8,6 +8,7 @@ use std::cmp::min;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::iter::FromIterator;
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum MoveType {
@@ -44,10 +45,6 @@ fn basic_pass(map: &mut Map) -> VecDeque<Move> {
     for i in 0..map.get_tiles().len() {
         if map.get_tile(i).flipped && map.get_tile(i).value > 0 {
             moves.append(&mut evaluate_neighbours(map, i));
-
-            if *map.get_status() != Status::InProgress {
-                break;
-            }
         }
     }
 
@@ -160,8 +157,12 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
 
     let mut moves: VecDeque<Move> = VecDeque::new();
 
+    // Sort the candidates
+    let mut candidates_sorted = Vec::from_iter(candidates.iter());
+    candidates_sorted.sort_by(|a, b| a.1.cmp(&b.1));
+
     let mut min_risk_tuple = (0, 257);
-    for candidate in candidates {
+    for candidate in candidates_sorted {
         let position = point::from_index(candidate.0, map.get_width());
         // Zero risk flip.
         if candidate.1 == 0 {
@@ -177,8 +178,8 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
                 position,
                 move_type: MoveType::Flag,
             });
-        } else if candidate.1 < min_risk_tuple.1 {
-            min_risk_tuple = candidate;
+        } else {
+            min_risk_tuple = *candidate;
         }
     }
 
@@ -336,4 +337,89 @@ fn random_move(map: &mut Map) -> Move {
         }
     }
     panic!("Failed to find a random tile.");
+}
+
+#[cfg(test)]
+mod tests {
+    use map;
+    use point;
+    use solver;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_simple_solve() {
+        let mines: HashSet<point::Point> = [
+            point::Point { x: 3, y: 1 },
+            point::Point { x: 4, y: 2 },
+            point::Point { x: 1, y: 1 },
+            point::Point { x: 2, y: 2 },
+            point::Point { x: 4, y: 4 },
+        ].iter()
+            .cloned()
+            .collect();
+        let mut map = map::generate_map_with_mines(5, 5, mines);
+        map.flip(&point::Point { x: 0, y: 4 });
+        map.flag(&point::Point { x: 3, y: 1 });
+        let moves = solver::solve(&map);
+        assert_eq!(14, moves.len());
+        for play in &moves {
+            if play.move_type == solver::MoveType::Flip {
+                map.flip(&play.position);
+            } else {
+                map.flag(&play.position);
+            }
+        }
+        assert_eq!(map::Status::Complete, *map.get_status());
+    }
+
+    #[test]
+    fn test_hard_solve() {
+        let mines: HashSet<point::Point> = [
+            point::Point { x: 0, y: 0 },
+            point::Point { x: 1, y: 0 },
+            point::Point { x: 2, y: 0 },
+            point::Point { x: 3, y: 1 },
+            point::Point { x: 4, y: 1 },
+            point::Point { x: 5, y: 1 },
+            point::Point { x: 7, y: 1 },
+            point::Point { x: 8, y: 1 },
+            point::Point { x: 2, y: 2 },
+            point::Point { x: 6, y: 2 },
+            point::Point { x: 9, y: 2 },
+            point::Point { x: 0, y: 4 },
+            point::Point { x: 2, y: 5 },
+            point::Point { x: 4, y: 5 },
+            point::Point { x: 5, y: 5 },
+            point::Point { x: 8, y: 5 },
+            point::Point { x: 9, y: 5 },
+            point::Point { x: 1, y: 6 },
+            point::Point { x: 9, y: 6 },
+            point::Point { x: 0, y: 7 },
+            point::Point { x: 1, y: 7 },
+            point::Point { x: 4, y: 7 },
+            point::Point { x: 4, y: 8 },
+            point::Point { x: 3, y: 9 },
+            point::Point { x: 8, y: 9 },
+        ].iter()
+            .cloned()
+            .collect();
+        let mut map = map::generate_map_with_mines(10, 10, mines);
+        map.flip(&point::Point { x: 6, y: 9 });
+        let moves = solver::solve(&map);
+
+        // Apply the moves to the map.
+        for play in &moves {
+            if play.move_type == solver::MoveType::Flip {
+                map.flip(&play.position);
+            } else {
+                map.flag(&play.position);
+            }
+        }
+
+        // Map should be solved.
+        assert_eq!(map::Status::Complete, *map.get_status());
+
+        // Should have taken 78 moves
+        assert_eq!(78, moves.len());
+    }
 }
