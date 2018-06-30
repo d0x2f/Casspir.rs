@@ -1,0 +1,10 @@
+[package]
+name = "casspir"
+description = "Minesweeper puzzle generator and solver."
+version = "0.1.0"
+readme="README.md"
+authors=["dylan.mcgannon@gmail.com"]
+license="LGPL-3.0-or-later"
+
+[dependencies]
+rand = "*"
