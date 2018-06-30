@@ -162,6 +162,7 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
     candidates_sorted.sort_by(|a, b| a.1.cmp(&b.1));
 
     let mut min_risk_tuple = (0, 257);
+    let mut min_risk_tuple_found = false;
     for candidate in candidates_sorted {
         let position = point::from_index(candidate.0, map.get_width());
         // Zero risk flip.
@@ -178,8 +179,9 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
                 position,
                 move_type: MoveType::Flag,
             });
-        } else {
+        } else if !min_risk_tuple_found {
             min_risk_tuple = *candidate;
+            min_risk_tuple_found = true;
         }
     }
 

@@ -254,7 +254,7 @@ pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -
             flagged: false,
             flipped: false
         };
-        (width * height) as usize
+        width as usize * height as usize
     ];
 
     // Loop over the tiles and turn into a mine with the calculated probability.
@@ -262,7 +262,7 @@ pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -
     for mine in &mines {
         // Ensure the mine is within the puzzle size.
         let index: usize = mine.to_index(width);
-        if index > ((width * height) - 1) as usize {
+        if index > ((width as usize * height as usize) - 1) {
             panic!("Cannot place a mine outside the puzzle bounds.");
         }
         // Set as mine.
@@ -348,6 +348,30 @@ mod tests {
 
         assert!(map.get_tiles_flipped() > 0);
         assert!(*map.get_status() != map::Status::Failed);
+    }
+
+    #[test]
+    fn test_tiny_map() {
+        let mut map = map::generate_map_with_mines(1, 1, HashSet::new());
+        assert_eq!(map::Status::InProgress, *map.get_status());
+        map.flip(&point::Point { x: 0, y: 0 });
+        assert_eq!(map::Status::Complete, *map.get_status());
+
+        let mines: HashSet<point::Point> = [point::Point { x: 0, y: 0 }].iter().cloned().collect();
+        let mut map = map::generate_map_with_mines(1, 1, mines);
+        assert_eq!(map::Status::InProgress, *map.get_status());
+        map.flip(&point::Point { x: 0, y: 0 });
+        assert_eq!(map::Status::Failed, *map.get_status());
+    }
+
+    #[test]
+    fn test_large_map() {
+        let mines: HashSet<point::Point> =
+            [point::Point { x: 11, y: 88 }].iter().cloned().collect();
+        let mut map = map::generate_map_with_mines(100, 100, mines);
+        assert_eq!(map::Status::InProgress, *map.get_status());
+        map.flip(&point::Point { x: 0, y: 0 });
+        assert_eq!(map::Status::Complete, *map.get_status());
     }
 
     #[test]
