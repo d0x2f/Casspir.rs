@@ -3,6 +3,7 @@
 use map::{Map, Status, Tile};
 use point;
 use point::Point;
+use rand;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -30,7 +31,7 @@ pub fn solve(map: &Map) -> VecDeque<Move> {
         if new_moves.len() == 0 {
             new_moves = enumerate_groups(&mut staging_map);
             if new_moves.len() == 0 {
-                panic!("Unable to find any moves.");
+                new_moves.push_back(random_move(&mut staging_map));
             }
         }
         moves.append(&mut new_moves);
@@ -330,6 +331,28 @@ fn evaluate_group(
     nominations
 }
 
+/// Perform a random move
+fn random_move(map: &mut Map) -> Move {
+    let random_index: usize =
+        rand::random::<usize>() % (map.get_size() - map.get_tiles_flipped()) as usize;
+
+    let mut unflipped_index: usize = 0;
+    for i in 0..map.get_tiles().len() {
+        if !map.get_tile(i).flipped {
+            if unflipped_index == random_index {
+                let position = point::from_index(i, map.get_width());
+                map.flip(&position);
+                return Move {
+                    position,
+                    move_type: MoveType::Flip,
+                };
+            }
+            unflipped_index += 1;
+        }
+    }
+    panic!("Failed to find a random tile.");
+}
+
 #[cfg(test)]
 mod tests {
     use map;
@@ -423,5 +446,52 @@ mod tests {
 
         // Should have taken 61 moves
         assert_eq!(61, moves.len());
+    }
+
+    #[test]
+    fn test_random_move() {
+        // Define mine positions.
+        let mines: HashSet<point::Point> = [
+            point::Point { x: 3, y: 0 },
+            point::Point { x: 3, y: 1 },
+            point::Point { x: 3, y: 2 },
+            point::Point { x: 3, y: 3 },
+            point::Point { x: 3, y: 4 },
+            point::Point { x: 3, y: 5 },
+            point::Point { x: 3, y: 6 },
+            point::Point { x: 3, y: 7 },
+            point::Point { x: 3, y: 8 },
+            point::Point { x: 3, y: 9 },
+            point::Point { x: 4, y: 9 },
+            point::Point { x: 5, y: 9 },
+            point::Point { x: 6, y: 9 },
+            point::Point { x: 7, y: 9 },
+            point::Point { x: 7, y: 8 },
+            point::Point { x: 7, y: 7 },
+            point::Point { x: 7, y: 6 },
+            point::Point { x: 7, y: 5 },
+            point::Point { x: 7, y: 4 },
+            point::Point { x: 7, y: 3 },
+            point::Point { x: 7, y: 2 },
+            point::Point { x: 7, y: 1 },
+            point::Point { x: 7, y: 0 },
+        ].iter()
+            .cloned()
+            .collect();
+
+        // Create a map with these mines.
+        let mut map = map::generate_map_with_mines(10, 10, mines);
+
+        // Flip a tile that would require the next move be random.
+        map.flip(&point::Point { x: 5, y: 4 });
+
+        // Solve the map.
+        let moves = solver::solve(&map);
+
+        // Apply the moves to the map.
+        map.apply_moves(&moves);
+
+        // Map should be completed.
+        assert!(*map.get_status() != map::Status::InProgress);
     }
 }

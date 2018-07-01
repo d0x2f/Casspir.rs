@@ -46,7 +46,7 @@ pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<point::Po
 /// let mut map = casspir::generate_map_with_difficulty(10, 10, 1, point::Point { x: 1, y: 4 });
 /// let moves = casspir::solve_map(&map);
 /// map.apply_moves(&moves);
-/// assert!(*map.get_status() == map::Status::Complete || *map.get_status() == map::Status::Failed);
+/// assert!(*map.get_status() != map::Status::InProgress);
 /// ```
 pub fn solve_map(map: &map::Map) -> VecDeque<solver::Move> {
     solver::solve(map)
