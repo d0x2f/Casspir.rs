@@ -3,7 +3,6 @@
 use map::{Map, Status, Tile};
 use point;
 use point::Point;
-use rand;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -31,7 +30,7 @@ pub fn solve(map: &Map) -> VecDeque<Move> {
         if new_moves.len() == 0 {
             new_moves = enumerate_groups(&mut staging_map);
             if new_moves.len() == 0 {
-                new_moves.push_back(random_move(&mut staging_map));
+                panic!("Unable to find any moves.");
             }
         }
         moves.append(&mut new_moves);
@@ -161,7 +160,7 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
     let mut candidates_sorted = Vec::from_iter(candidates.iter());
     candidates_sorted.sort_by(|a, b| a.1.cmp(&b.1));
 
-    let mut min_risk_tuple = (0, 257);
+    let mut min_risk_tuple = (0, 0);
     let mut min_risk_tuple_found = false;
     for candidate in candidates_sorted {
         let position = point::from_index(candidate.0, map.get_width());
@@ -187,7 +186,7 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
 
     // If no certain moves were made, do the least risky.
     let position = point::from_index(min_risk_tuple.0, map.get_width());
-    if moves.len() == 0 && min_risk_tuple.1 != 257 {
+    if moves.len() == 0 && min_risk_tuple_found {
         map.flip(&position);
         moves.push_back(Move {
             position,
@@ -319,28 +318,6 @@ fn evaluate_group(
     nominations
 }
 
-/// Perform a random move
-fn random_move(map: &mut Map) -> Move {
-    let random_index: usize =
-        rand::random::<usize>() % (map.get_size() - map.get_tiles_flipped()) as usize;
-
-    let mut unflipped_index: usize = 0;
-    for i in 0..map.get_tiles().len() {
-        if !map.get_tile(i).flipped {
-            if unflipped_index == random_index {
-                let position = point::from_index(i, map.get_width());
-                map.flip(&position);
-                return Move {
-                    position,
-                    move_type: MoveType::Flip,
-                };
-            }
-            unflipped_index += 1;
-        }
-    }
-    panic!("Failed to find a random tile.");
-}
-
 #[cfg(test)]
 mod tests {
     use map;
@@ -350,6 +327,7 @@ mod tests {
 
     #[test]
     fn test_simple_solve() {
+        // Define mine positions
         let mines: HashSet<point::Point> = [
             point::Point { x: 3, y: 1 },
             point::Point { x: 4, y: 2 },
@@ -359,23 +337,33 @@ mod tests {
         ].iter()
             .cloned()
             .collect();
+
+        // Generate map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
+
+        // Flip and flag a couple of tiles.
         map.flip(&point::Point { x: 0, y: 4 });
         map.flag(&point::Point { x: 3, y: 1 });
+
+        // Map should be in progrsss
+        assert_eq!(map::Status::InProgress, *map.get_status());
+
+        // Solve the map.
         let moves = solver::solve(&map);
+
+        // Should have taken 14 moves.
         assert_eq!(14, moves.len());
-        for play in &moves {
-            if play.move_type == solver::MoveType::Flip {
-                map.flip(&play.position);
-            } else {
-                map.flag(&play.position);
-            }
-        }
+
+        // Apply the moves to the map.
+        map.apply_moves(&moves);
+
+        // Map should be completed
         assert_eq!(map::Status::Complete, *map.get_status());
     }
 
     #[test]
     fn test_hard_solve() {
+        // Define mine positions.
         let mines: HashSet<point::Point> = [
             point::Point { x: 0, y: 0 },
             point::Point { x: 1, y: 0 },
@@ -405,18 +393,18 @@ mod tests {
         ].iter()
             .cloned()
             .collect();
+
+        // Create a map with these mines.
         let mut map = map::generate_map_with_mines(10, 10, mines);
+
+        // Flip a safe tile.
         map.flip(&point::Point { x: 6, y: 9 });
+
+        // Solve the map.
         let moves = solver::solve(&map);
 
         // Apply the moves to the map.
-        for play in &moves {
-            if play.move_type == solver::MoveType::Flip {
-                map.flip(&play.position);
-            } else {
-                map.flag(&play.position);
-            }
-        }
+        map.apply_moves(&moves);
 
         // Map should be solved.
         assert_eq!(map::Status::Complete, *map.get_status());

@@ -2,7 +2,9 @@
 
 use point::{self, Point};
 use rand;
+use solver::{Move, MoveType};
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::vec::Vec;
 
@@ -92,6 +94,17 @@ impl Map {
         write!(writer, "\n")?;
 
         Ok(())
+    }
+
+    // Apply a queue of moves.
+    pub fn apply_moves(&mut self, moves: &VecDeque<Move>) {
+        for play in moves {
+            if play.move_type == MoveType::Flip {
+                self.flip(&play.position);
+            } else {
+                self.flag(&play.position);
+            }
+        }
     }
 
     /// Flags or unflags a tile at the given `position`.
@@ -290,21 +303,28 @@ pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -
 mod tests {
     use map;
     use point;
+    use solver;
     use std::collections::HashSet;
+    use std::collections::VecDeque;
     use std::str;
 
     #[test]
     fn test_generate_puzzle() {
+        // Generate a puzzle with 100 difficulty.
         let map = map::generate_map_with_difficulty(10, 10, 100, point::Point { x: 5, y: 5 });
 
+        // Dimensions should be 10x10, size 100.
         assert_eq!(10, map.get_width());
         assert_eq!(10, map.get_height());
         assert_eq!(100, map.get_size());
+
+        // Should have at least 5 mines.
         assert!(map.get_mines_remaining() >= 5);
     }
 
     #[test]
     fn test_mine_flip() {
+        // Define mine positions.
         let mines: HashSet<point::Point> = [
             point::Point { x: 3, y: 1 },
             point::Point { x: 4, y: 2 },
@@ -314,14 +334,23 @@ mod tests {
         ].iter()
             .cloned()
             .collect();
+
+        // Create map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
+
+        // Should be in progress.
         assert_eq!(map::Status::InProgress, *map.get_status());
+
+        // Flip a mine.
         map.flip(&point::Point { x: 4, y: 4 });
+
+        // Should be failed.
         assert_eq!(map::Status::Failed, *map.get_status());
     }
 
     #[test]
     fn test_group_flip() {
+        // Define mine positions.
         let mines: HashSet<point::Point> = [
             point::Point { x: 0, y: 0 },
             point::Point { x: 1, y: 1 },
@@ -331,51 +360,183 @@ mod tests {
         ].iter()
             .cloned()
             .collect();
+
+        // Create map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
 
+        // Flip a tile that would trigger a recursive flippening.
         map.flip(&point::Point { x: 4, y: 0 });
+
+        // Eight tiles should have flipped.
         assert_eq!(8, map.get_tiles_flipped());
 
+        // Flip another group.
         map.flip(&point::Point { x: 0, y: 4 });
+
+        // Now 16 tiles should be flipped.
         assert_eq!(16, map.get_tiles_flipped());
 
+        // Map should still be in progress.
         assert_eq!(map::Status::InProgress, *map.get_status());
     }
 
     #[test]
     fn test_fist_flip() {
+        // Generate a map with 100 dificulty.
         let map = map::generate_map_with_difficulty(10, 10, 100, point::Point { x: 5, y: 5 });
 
+        // At least the initial click point should be flipped.
         assert!(map.get_tiles_flipped() > 0);
+
+        // The first click should never fail the map.
         assert!(*map.get_status() != map::Status::Failed);
     }
 
     #[test]
     fn test_tiny_map() {
+        // Generate a 1x1 map with no mines.
         let mut map = map::generate_map_with_mines(1, 1, HashSet::new());
+
+        // Should be in progress.
         assert_eq!(map::Status::InProgress, *map.get_status());
+
+        // Flip a tile (could be any tile).
         map.flip(&point::Point { x: 0, y: 0 });
+
+        // The map should be completed.
         assert_eq!(map::Status::Complete, *map.get_status());
 
+        // Generate a 1x1 map with one mine.
         let mines: HashSet<point::Point> = [point::Point { x: 0, y: 0 }].iter().cloned().collect();
         let mut map = map::generate_map_with_mines(1, 1, mines);
+
+        // Map should be in progress.
         assert_eq!(map::Status::InProgress, *map.get_status());
+
+        // Flip the mine.
         map.flip(&point::Point { x: 0, y: 0 });
+
+        // Map should be failed.
         assert_eq!(map::Status::Failed, *map.get_status());
     }
 
     #[test]
     fn test_large_map() {
+        // Create a 100x100 map with one mine.
         let mines: HashSet<point::Point> =
             [point::Point { x: 11, y: 88 }].iter().cloned().collect();
         let mut map = map::generate_map_with_mines(100, 100, mines);
+
+        // Map should be in progress.
         assert_eq!(map::Status::InProgress, *map.get_status());
+
+        // Flip any tile that isn't the mine.
         map.flip(&point::Point { x: 0, y: 0 });
+
+        // Map should be completed.
         assert_eq!(map::Status::Complete, *map.get_status());
     }
 
     #[test]
+    fn test_satisfied_tile_convenience_flip() {
+        // Generate a 3x3 map with one mine.
+        let mines: HashSet<point::Point> = [point::Point { x: 1, y: 0 }].iter().cloned().collect();
+        let mut map = map::generate_map_with_mines(3, 3, mines);
+
+        // Flip an empty tile.
+        map.flip(&point::Point { x: 2, y: 2 });
+
+        // ###
+        // 111
+        // 000
+        // Flag (1,0).
+        map.flag(&point::Point { x: 1, y: 0 });
+
+        // Map should be in progress.
+        assert_eq!(map::Status::InProgress, *map.get_status());
+
+        // #^#
+        // 111
+        // 000
+        // Now "flip" (1,1) to trigger the convenience flip of (0,0) & (2, 0).
+        map.flip(&point::Point { x: 1, y: 1 });
+
+        // (0,0) should be flipped.
+        assert!(map.get_tile(0).flipped);
+
+        // (2,0) should be flipped.
+        assert!(map.get_tile(2).flipped);
+
+        // Map should be in progress.
+        assert_eq!(map::Status::Complete, *map.get_status());
+    }
+
+    #[test]
+    fn test_apply_moves() {
+        // Define mine positions.
+        let mines: HashSet<point::Point> = [
+            point::Point { x: 0, y: 0 },
+            point::Point { x: 1, y: 1 },
+            point::Point { x: 2, y: 2 },
+            point::Point { x: 3, y: 3 },
+            point::Point { x: 4, y: 4 },
+        ].iter()
+            .cloned()
+            .collect();
+
+        // Create map with these mines.
+        let mut map = map::generate_map_with_mines(5, 5, mines);
+
+        // Create a move list.
+        let moves: VecDeque<solver::Move> = [
+            solver::Move {
+                position: point::Point { x: 3, y: 3 },
+                move_type: solver::MoveType::Flag,
+            },
+            solver::Move {
+                position: point::Point { x: 2, y: 0 },
+                move_type: solver::MoveType::Flip,
+            },
+            solver::Move {
+                position: point::Point { x: 3, y: 3 },
+                move_type: solver::MoveType::Flag,
+            },
+            solver::Move {
+                position: point::Point { x: 1, y: 3 },
+                move_type: solver::MoveType::Flag,
+            },
+            solver::Move {
+                position: point::Point { x: 2, y: 0 },
+                move_type: solver::MoveType::Flip,
+            },
+            solver::Move {
+                position: point::Point { x: 3, y: 0 },
+                move_type: solver::MoveType::Flip,
+            },
+        ].iter()
+            .cloned()
+            .collect();
+
+        // Apply the list of moves
+        map.apply_moves(&moves);
+
+        // Print map into a buffer.
+        let mut output = Vec::new();
+        map.print(&mut output, false).unwrap();
+
+        // Convert to string for comparison.
+        let string = match str::from_utf8(&output) {
+            Ok(s) => s,
+            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+        };
+
+        // Check the string matches the expected output.
+        assert_eq!("\n##100\n##210\n###21\n#^###\n#####\n", string);
+    }
+
+    #[test]
     fn test_print() {
+        // Define mine positions.
         let mines: HashSet<point::Point> = [
             point::Point { x: 0, y: 0 },
             point::Point { x: 1, y: 0 },
@@ -405,21 +566,28 @@ mod tests {
         ].iter()
             .cloned()
             .collect();
+
+        // Generate a map with these mines.
         let mut map = map::generate_map_with_mines(10, 10, mines);
+
+        // Flip and flag a few tiles.
         map.flag(&point::Point { x: 6, y: 3 });
         map.flip(&point::Point { x: 6, y: 9 });
         map.flip(&point::Point { x: 0, y: 2 });
         map.flag(&point::Point { x: 3, y: 9 });
         map.flip(&point::Point { x: 8, y: 5 });
 
+        // Print map into a buffer.
         let mut output = Vec::new();
         map.print(&mut output, false).unwrap();
 
+        // Convert to string for comparison.
         let string = match str::from_utf8(&output) {
             Ok(s) => s,
             Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
         };
 
+        // Check the string matches the expected output.
         assert_eq!(
             "\n##########\n24########\n01########\n12####^###\n##########\n########*#\n#####3113#\n#####2001#\n#####2011#\n###^#101##\n",
             string
