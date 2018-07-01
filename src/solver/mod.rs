@@ -71,13 +71,15 @@ fn evaluate_neighbours(map: &mut Map, index: usize) -> VecDeque<Move> {
 
     let mut moves = VecDeque::<Move>::new();
 
-    if !map.get_tile(index).flipped && flagged == map.get_tile(index).value && unflipped > 0 {
+    // If this tile is satisfied, flip all neighbouring unflipped tiles (via convenience flip on the one tile).
+    if flagged == map.get_tile(index).value && unflipped - flagged > 0 {
         let position: Point = point::from_index(index, map.get_width());
         map.flip(&position);
         moves.push_back(Move {
             position,
             move_type: MoveType::Flip,
         });
+    // If the number of unflipped tiles equals this tiles value, they must all be mines.
     } else if unflipped == map.get_tile(index).value {
         for neighbour in &neighbours {
             let neighbour_index = neighbour.to_index(map.get_width());
@@ -409,7 +411,7 @@ mod tests {
         // Map should be solved.
         assert_eq!(map::Status::Complete, *map.get_status());
 
-        // Should have taken 78 moves
-        assert_eq!(78, moves.len());
+        // Should have taken 61 moves
+        assert_eq!(61, moves.len());
     }
 }
