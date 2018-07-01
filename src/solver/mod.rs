@@ -50,6 +50,9 @@ fn basic_pass(map: &mut Map) -> VecDeque<Move> {
     moves
 }
 
+/// Check each neighbour tile to determine if we can be sure it is or isn't a mine.
+/// This is called straight after the given tile is flipped, as the new information
+/// gained by this tiles value could help solve neighbour tiles.
 fn evaluate_neighbours(map: &mut Map, index: usize) -> VecDeque<Move> {
     let neighbours: HashSet<Point> = point::get_neighbours(
         &point::from_index(index, map.get_width()),
@@ -97,6 +100,10 @@ fn evaluate_neighbours(map: &mut Map, index: usize) -> VecDeque<Move> {
     moves
 }
 
+/// Find and solve each discovered group one at a time.
+/// Note: this can be improved by considering distinct groups seperately
+/// that way multiple uncertain moves can be made with one pass because
+/// we know tiles from separate groups won't affect each others solution.
 fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
     let map_size = map.get_size();
     let mut candidates: HashSet<(usize, usize)>;
@@ -199,6 +206,9 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
     moves
 }
 
+/// Recursively search the for the border tiles of a cohesive group of tiles.
+/// A group of tiles is defined as a collection of tiles such that their configuration
+/// is solvable by considering only tiles within the group.
 fn recursive_border_search(
     map: &Map,
     index: usize,

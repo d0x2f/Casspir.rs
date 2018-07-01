@@ -74,6 +74,7 @@ impl Map {
         self.mines_remaining
     }
 
+    // Write an ascii representation of the current map state to `writer`.
     pub fn print(&self, writer: &mut Write, revealed: bool) -> io::Result<()> {
         for i in 0..self.get_tiles().len() {
             if (i % self.width as usize) == 0 {
@@ -525,10 +526,7 @@ mod tests {
         map.print(&mut output, false).unwrap();
 
         // Convert to string for comparison.
-        let string = match str::from_utf8(&output) {
-            Ok(s) => s,
-            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-        };
+        let string = str::from_utf8(&output).unwrap();
 
         // Check the string matches the expected output.
         assert_eq!("\n##100\n##210\n###21\n#^###\n#####\n", string);
@@ -582,10 +580,7 @@ mod tests {
         map.print(&mut output, false).unwrap();
 
         // Convert to string for comparison.
-        let string = match str::from_utf8(&output) {
-            Ok(s) => s,
-            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-        };
+        let string = str::from_utf8(&output).unwrap();
 
         // Check the string matches the expected output.
         assert_eq!(
