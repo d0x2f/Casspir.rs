@@ -10,6 +10,8 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::iter::FromIterator;
 
+const GROUP_SIZE_LIMIT: usize = 16;
+
 #[derive(PartialEq, Clone, Debug)]
 pub enum MoveType {
     Flip,
@@ -110,9 +112,9 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
     let mut candidates: HashSet<(usize, usize)>;
     let mut visited = HashSet::<usize>::new();
 
-    // If the number of remaining tiles is less than 20,
+    // If the number of remaining tiles is less than `GROUP_SIZE_LIMIT`,
     // just compute the permutations as one group.
-    if map_size - map.get_tiles_flipped() < 20 {
+    if map_size - map.get_tiles_flipped() < GROUP_SIZE_LIMIT as u32 {
         let mut border_unflipped = HashSet::<usize>::new();
         let mut border_flipped = HashSet::<usize>::new();
 
@@ -156,9 +158,8 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
 
             visited.extend(&border_unflipped);
 
-            // If the found group is less that 20 tiles, evaluate it.
-            // Larger groups are too computationally time consuming.
-            if border_unflipped.len() > 0 && border_unflipped.len() < 20 {
+            // If the group isn't empty, evaluate to find the best move.
+            if border_unflipped.len() > 0 {
                 candidates.extend(evaluate_group(map, &border_unflipped, &border_flipped));
             }
         }
@@ -256,11 +257,15 @@ fn evaluate_group(
     border_flipped: &HashSet<usize>,
 ) -> HashSet<(usize, usize)> {
     let mut staging_map: Map = map.clone();
-    let unflipped_count: usize = border_unflipped.len();
+    let unflipped_count: usize = min(GROUP_SIZE_LIMIT, border_unflipped.len());
     let max_mines: u32 = min(staging_map.get_mines_remaining(), unflipped_count as u32);
     let mut tallies = HashMap::<usize, u32>::new();
     let mut valid_permutations = 0;
     let map_width = staging_map.get_width();
+
+    // Sort so that results are deterministic.
+    let mut border_unflipped_sorted = Vec::from_iter(border_unflipped.iter());
+    border_unflipped_sorted.sort();
 
     // Initialise the valid flag tally map.
     for index in border_unflipped {
@@ -275,16 +280,16 @@ fn evaluate_group(
         }
 
         let mut j: usize = 0;
-        for index in border_unflipped {
+        for index in &border_unflipped_sorted {
             // Use the permutation index to determine if this tile is flagged or not
             // using i as a mitmask.
             if i & (1 << j) > 0 {
-                if !staging_map.get_tile(*index).flagged {
-                    staging_map.flag(&point::from_index(*index, map_width));
+                if !staging_map.get_tile(**index).flagged {
+                    staging_map.flag(&point::from_index(**index, map_width));
                 }
             } else {
-                if staging_map.get_tile(*index).flagged {
-                    staging_map.flag(&point::from_index(*index, map_width));
+                if staging_map.get_tile(**index).flagged {
+                    staging_map.flag(&point::from_index(**index, map_width));
                 }
             }
             j += 1;
@@ -324,7 +329,7 @@ fn evaluate_group(
     }
 
     // If no certain moves were found, nominate the least risky.
-    if nominations.len() == 0 {
+    if nominations.len() == 0 && valid_permutations > 0 {
         nominations.insert((min_index, (min_value * (255 / valid_permutations)) as usize));
     }
 
@@ -444,8 +449,8 @@ mod tests {
         // Map should be solved.
         assert_eq!(map::Status::Complete, *map.get_status());
 
-        // Should have taken 61 moves
-        assert_eq!(61, moves.len());
+        // Should have taken 60 moves
+        assert_eq!(60, moves.len());
     }
 
     #[test]
