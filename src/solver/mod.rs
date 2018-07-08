@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::iter::FromIterator;
 
-const GROUP_SIZE_LIMIT: usize = 16;
+const GROUP_SIZE_LIMIT: usize = 18;
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum MoveType {
@@ -111,31 +111,19 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
     let map_size = map.get_size();
     let mut candidates: HashSet<(usize, usize)>;
     let mut visited = HashSet::<usize>::new();
+    let mut group_visited = HashSet::<usize>::new();
 
     // If the number of remaining tiles is less than `GROUP_SIZE_LIMIT`,
     // just compute the permutations as one group.
     if map_size - map.get_tiles_flipped() < GROUP_SIZE_LIMIT as u32 {
         let mut border_unflipped = HashSet::<usize>::new();
-        let mut border_flipped = HashSet::<usize>::new();
 
         for i in 0..map_size as usize {
             if !map.get_tile(i).flipped && !map.get_tile(i).flagged {
                 border_unflipped.insert(i);
-
-                let neighbours: HashSet<Point> = point::get_neighbours(
-                    &point::from_index(i, map.get_width()),
-                    map.get_width(),
-                    map.get_height(),
-                );
-                for neighbour in &neighbours {
-                    let neighbour_index = neighbour.to_index(map.get_width());
-                    if map.get_tile(neighbour_index).flipped {
-                        border_flipped.insert(neighbour_index);
-                    }
-                }
             }
         }
-        candidates = evaluate_group(map, &border_unflipped, &border_flipped);
+        candidates = evaluate_group(map, &border_unflipped);
     } else {
         candidates = HashSet::new();
         // Loop over each tile and consider it's group.
@@ -145,22 +133,14 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
                 continue;
             }
 
-            let mut border_unflipped: HashSet<usize> = HashSet::new();
-            let mut border_flipped: HashSet<usize> = HashSet::new();
+            let groups: Vec<HashSet<usize>> =
+                recursive_border_search(map, i, &mut visited, &mut group_visited);
 
-            recursive_border_search(
-                map,
-                i,
-                &mut border_unflipped,
-                &mut border_flipped,
-                &mut visited,
-            );
-
-            visited.extend(&border_unflipped);
-
-            // If the group isn't empty, evaluate to find the best move.
-            if border_unflipped.len() > 0 {
-                candidates.extend(evaluate_group(map, &border_unflipped, &border_flipped));
+            // Evaluate each group
+            for group in groups {
+                if group.len() < GROUP_SIZE_LIMIT {
+                    candidates.extend(evaluate_group(map, &group));
+                }
             }
         }
     }
@@ -214,17 +194,18 @@ fn enumerate_groups(map: &mut Map) -> VecDeque<Move> {
 fn recursive_border_search(
     map: &Map,
     index: usize,
-    border_unflipped: &mut HashSet<usize>,
-    border_flipped: &mut HashSet<usize>,
     visited: &mut HashSet<usize>,
-) {
+    mut group_visited: &mut HashSet<usize>,
+) -> Vec<HashSet<usize>> {
     // Stop recursion if this tile is flipped, flagged or already visited.
     if visited.contains(&index) || map.get_tile(index).flipped || map.get_tile(index).flagged {
-        return;
+        return vec![];
     }
 
     // Add to visited list
     visited.insert(index);
+
+    let mut found_borders: Vec<HashSet<usize>> = Vec::new();
 
     // Loop over the neighbours to determine if this is a border tile and to recurse.
     let neighbours: HashSet<Point> = point::get_neighbours(
@@ -234,41 +215,141 @@ fn recursive_border_search(
     );
     for neighbour in &neighbours {
         let neighbour_index = neighbour.to_index(map.get_width());
+
+        // Skip this tile if it's already been visited.
+        if visited.contains(&neighbour_index) {
+            continue;
+        }
+
+        // Check if this is a border tile.
         if map.get_tile(neighbour_index).flipped {
-            border_flipped.insert(neighbour_index);
-            border_unflipped.insert(index);
+            // Skip this tile if it's already in a group.
+            if group_visited.contains(&neighbour_index) {
+                continue;
+            }
+            // Find the full border group
+            let mut group_members: HashSet<usize> = HashSet::new();
+            recursive_border_grok_flipped(
+                map,
+                &mut group_visited,
+                &mut group_members,
+                neighbour_index,
+            );
+            found_borders.push(group_members);
         } else {
-            recursive_border_search(
+            // Continue the search
+            found_borders.append(&mut recursive_border_search(
                 map,
                 neighbour_index,
-                border_unflipped,
-                border_flipped,
                 visited,
-            );
+                group_visited,
+            ));
+        }
+    }
+
+    found_borders
+}
+
+/// Recursively find all members of the group.
+fn recursive_border_grok_flipped(
+    map: &Map,
+    visited: &mut HashSet<usize>,
+    mut members: &mut HashSet<usize>,
+    flipped_index: usize,
+) {
+    // Loop over the neighbours of the flipped tile to find unflipped members of the group.
+    let neighbours: HashSet<Point> = point::get_neighbours(
+        &point::from_index(flipped_index, map.get_width()),
+        map.get_width(),
+        map.get_height(),
+    );
+    for neighbour in &neighbours {
+        let neighbour_index = neighbour.to_index(map.get_width());
+
+        // Skip this tile if it's already been visited.
+        if visited.contains(&neighbour_index) {
+            continue;
+        }
+
+        // Check if this neighbour is unflipped and unflagged.
+        if !map.get_tile(neighbour_index).flipped && !map.get_tile(neighbour_index).flagged {
+            visited.insert(neighbour_index);
+
+            // Add this neighbour to the group.
+            members.insert(neighbour_index);
+
+            // Recurse
+            recursive_border_grok_unflipped(map, visited, &mut members, neighbour_index);
+        }
+    }
+}
+
+/// Recursively find all members of the group.
+fn recursive_border_grok_unflipped(
+    map: &Map,
+    visited: &mut HashSet<usize>,
+    mut members: &mut HashSet<usize>,
+    unflipped_index: usize,
+) {
+    // Loop over the neighbours of the unflipped tile to find flipped members of the group.
+    let neighbours: HashSet<Point> = point::get_neighbours(
+        &point::from_index(unflipped_index, map.get_width()),
+        map.get_width(),
+        map.get_height(),
+    );
+    for neighbour in &neighbours {
+        let neighbour_index = neighbour.to_index(map.get_width());
+
+        // Skip this tile if it's already been visited.
+        if visited.contains(&neighbour_index) {
+            continue;
+        }
+
+        // Check if this is a border tile.
+        if map.get_tile(neighbour_index).flipped {
+            visited.insert(neighbour_index);
+
+            // Recurse
+            recursive_border_grok_flipped(map, visited, &mut members, neighbour_index);
         }
     }
 }
 
 /// Compute possible permutations within the given group to find tiles that either must
 /// be flagged or must be a mine. Produces a list of tile nominations with a risk value associated.
-fn evaluate_group(
-    map: &mut Map,
-    border_unflipped: &HashSet<usize>,
-    border_flipped: &HashSet<usize>,
-) -> HashSet<(usize, usize)> {
+fn evaluate_group(map: &mut Map, tiles_unflipped: &HashSet<usize>) -> HashSet<(usize, usize)> {
     let mut staging_map: Map = map.clone();
-    let unflipped_count: usize = min(GROUP_SIZE_LIMIT, border_unflipped.len());
+    let unflipped_count: usize = min(GROUP_SIZE_LIMIT, tiles_unflipped.len());
     let max_mines: u32 = min(staging_map.get_mines_remaining(), unflipped_count as u32);
     let mut tallies = HashMap::<usize, u32>::new();
     let mut valid_permutations = 0;
     let map_width = staging_map.get_width();
+    let mut tiles_flipped: HashSet<usize> = HashSet::new();
 
     // Sort so that results are deterministic.
-    let mut border_unflipped_sorted = Vec::from_iter(border_unflipped.iter());
-    border_unflipped_sorted.sort();
+    let mut tiles_unflipped_sorted = Vec::from_iter(tiles_unflipped.iter());
+    tiles_unflipped_sorted.sort();
+
+    // Find all the neibouring flipped tiles.
+    for index in &tiles_unflipped_sorted {
+        let neighbours: HashSet<Point> = point::get_neighbours(
+            &point::from_index(**index, map.get_width()),
+            map.get_width(),
+            map.get_height(),
+        );
+        for neighbour in neighbours {
+            let neighbour_index = neighbour.to_index(map.get_width());
+            if map.get_tile(neighbour_index).flipped {
+                tiles_flipped.insert(neighbour_index);
+            }
+        }
+
+        // Initialise flag tallies
+        tallies.insert(**index, 0);
+    }
 
     // Initialise the valid flag tally map.
-    for index in border_unflipped {
+    for index in tiles_unflipped {
         tallies.insert(*index, 0);
     }
 
@@ -280,7 +361,7 @@ fn evaluate_group(
         }
 
         let mut j: usize = 0;
-        for index in &border_unflipped_sorted {
+        for index in &tiles_unflipped_sorted {
             // Use the permutation index to determine if this tile is flagged or not
             // using i as a mitmask.
             if i & (1 << j) > 0 {
@@ -296,7 +377,7 @@ fn evaluate_group(
         }
 
         // Check if the flipped tiles are satisfied by this permutation.
-        for index in border_flipped {
+        for index in &tiles_flipped {
             if !staging_map.is_tile_satisfied(&point::from_index(*index, map_width)) {
                 continue 'outer;
             }
@@ -304,7 +385,7 @@ fn evaluate_group(
         valid_permutations += 1;
 
         // Increment the valid flag tally for each unflipped tile.
-        for index in border_unflipped {
+        for index in tiles_unflipped {
             if staging_map.get_tile(*index).flagged {
                 let tally = tallies.entry(*index).or_insert(0);
                 *tally += 1;
@@ -449,8 +530,8 @@ mod tests {
         // Map should be solved.
         assert_eq!(map::Status::Complete, *map.get_status());
 
-        // Should have taken 60 moves
-        assert_eq!(60, moves.len());
+        // Should have taken 61 moves
+        assert_eq!(61, moves.len());
     }
 
     #[test]
