@@ -1,8 +1,8 @@
 //! This module contains tools for manipulating a puzzle map.
 
-use point::{self, Point};
+use crate::point::{self, Point};
+use crate::solver::{Move, MoveType};
 use rand;
-use solver::{Move, MoveType};
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::io::{self, Write};
@@ -75,7 +75,7 @@ impl Map {
     }
 
     // Write an ascii representation of the current map state to `writer`.
-    pub fn print(&self, writer: &mut Write, revealed: bool) -> io::Result<()> {
+    pub fn print(&self, writer: &mut dyn Write, revealed: bool) -> io::Result<()> {
         for i in 0..self.get_tiles().len() {
             if (i % self.width as usize) == 0 {
                 write!(writer, "\n")?;
@@ -302,12 +302,8 @@ pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -
 
 #[cfg(test)]
 mod tests {
-    use map;
-    use point;
-    use solver;
-    use std::collections::HashSet;
-    use std::collections::VecDeque;
-    use std::str;
+    use super::*;
+    use crate::{map, solver};
 
     #[test]
     fn test_generate_puzzle() {
@@ -332,9 +328,10 @@ mod tests {
             point::Point { x: 1, y: 1 },
             point::Point { x: 2, y: 2 },
             point::Point { x: 4, y: 4 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Create map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
@@ -358,9 +355,10 @@ mod tests {
             point::Point { x: 2, y: 2 },
             point::Point { x: 3, y: 3 },
             point::Point { x: 4, y: 4 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Create map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
@@ -390,7 +388,7 @@ mod tests {
         assert!(map.get_tiles_flipped() > 0);
 
         // The first click should never fail the map.
-        assert!(*map.get_status() != map::Status::Failed);
+        assert_ne!(*map.get_status(), map::Status::Failed);
     }
 
     #[test]
@@ -481,9 +479,10 @@ mod tests {
             point::Point { x: 2, y: 2 },
             point::Point { x: 3, y: 3 },
             point::Point { x: 4, y: 4 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Create map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
@@ -514,9 +513,10 @@ mod tests {
                 position: point::Point { x: 3, y: 0 },
                 move_type: solver::MoveType::Flip,
             },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Apply the list of moves
         map.apply_moves(&moves);
@@ -526,7 +526,7 @@ mod tests {
         map.print(&mut output, false).unwrap();
 
         // Convert to string for comparison.
-        let string = str::from_utf8(&output).unwrap();
+        let string = std::str::from_utf8(&output).unwrap();
 
         // Check the string matches the expected output.
         assert_eq!("\n##100\n##210\n###21\n#^###\n#####\n", string);
@@ -561,9 +561,10 @@ mod tests {
             point::Point { x: 4, y: 8 },
             point::Point { x: 3, y: 9 },
             point::Point { x: 8, y: 9 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Generate a map with these mines.
         let mut map = map::generate_map_with_mines(10, 10, mines);
@@ -580,7 +581,7 @@ mod tests {
         map.print(&mut output, false).unwrap();
 
         // Convert to string for comparison.
-        let string = str::from_utf8(&output).unwrap();
+        let string = std::str::from_utf8(&output).unwrap();
 
         // Check the string matches the expected output.
         assert_eq!(
