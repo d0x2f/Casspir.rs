@@ -3,9 +3,12 @@
 use crate::point::{self, Point};
 use crate::solver::{Move, MoveType};
 use rand;
+use rand::seq::IteratorRandom;
+use rand::thread_rng;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::io::{self, Write};
+use std::iter::FromIterator;
 use std::vec::Vec;
 
 /// Represents the completion state of a puzzle.
@@ -220,7 +223,7 @@ pub fn generate_map_with_difficulty(width: u16, height: u16, difficulty: u8, cli
             value: 0,
             mine: false,
             flagged: false,
-            flipped: false
+            flipped: false,
         };
         (width * height) as usize
     ];
@@ -258,6 +261,21 @@ pub fn generate_map_with_difficulty(width: u16, height: u16, difficulty: u8, cli
     map
 }
 
+fn generate_mines_unchecked(width: u16, height: u16, total: u32) -> Vec<Point> {
+    (0..width)
+        .flat_map(|i| (0..height).map(move |j| Point { x: i, y: j }))
+        .choose_multiple(&mut thread_rng(), total as usize)
+}
+
+/// Generate a map based on a given `total` number of mines and initial `click`.
+pub fn generate_map_with_total(width: u16, height: u16, total: u32, click: Point) -> Map {
+    let mut mines = generate_mines_unchecked(width, height, total);
+    while mines.contains(&click) {
+        mines = generate_mines_unchecked(width, height, total)
+    }
+    generate_map_with_mines(width, height, HashSet::from_iter(mines.into_iter()))
+}
+
 /// Generate a map with given mine locations.
 pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -> Map {
     // Initialise a vector of empty tiles.
@@ -266,7 +284,7 @@ pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -
             value: 0,
             mine: false,
             flagged: false,
-            flipped: false
+            flipped: false,
         };
         width as usize * height as usize
     ];
@@ -317,6 +335,20 @@ mod tests {
 
         // Should have at least 5 mines.
         assert!(map.get_mines_remaining() >= 5);
+    }
+
+    #[test]
+    fn test_generate_puzzle_total() {
+        // Generate a puzzle with 100 difficulty.
+        let map = map::generate_map_with_total(10, 10, 10, point::Point { x: 5, y: 5 });
+
+        // Dimensions should be 10x10, size 100.
+        assert_eq!(10, map.get_width());
+        assert_eq!(10, map.get_height());
+        assert_eq!(100, map.get_size());
+
+        // Should have at least 5 mines.
+        assert_eq!(map.get_mines_remaining(), 10);
     }
 
     #[test]
