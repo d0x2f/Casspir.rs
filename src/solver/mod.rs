@@ -1,8 +1,7 @@
 //! This module contains tools for solving a puzzle.
 
-use map::{Map, Status, Tile};
-use point;
-use point::Point;
+use crate::map::{Map, Status, Tile};
+use crate::point::{self, Point};
 use rand;
 use std::cmp::min;
 use std::collections::HashMap;
@@ -441,10 +440,8 @@ fn random_move(map: &mut Map) -> Move {
 
 #[cfg(test)]
 mod tests {
-    use map;
-    use point;
-    use solver;
-    use std::collections::HashSet;
+    use super::*;
+    use crate::{map, solver};
 
     #[test]
     fn test_simple_solve() {
@@ -455,9 +452,10 @@ mod tests {
             point::Point { x: 1, y: 1 },
             point::Point { x: 2, y: 2 },
             point::Point { x: 4, y: 4 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Generate map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
@@ -511,9 +509,10 @@ mod tests {
             point::Point { x: 4, y: 8 },
             point::Point { x: 3, y: 9 },
             point::Point { x: 8, y: 9 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Create a map with these mines.
         let mut map = map::generate_map_with_mines(10, 10, mines);
@@ -561,9 +560,10 @@ mod tests {
             point::Point { x: 7, y: 2 },
             point::Point { x: 7, y: 1 },
             point::Point { x: 7, y: 0 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Create a map with these mines.
         let mut map = map::generate_map_with_mines(10, 10, mines);
@@ -578,6 +578,6 @@ mod tests {
         map.apply_moves(&moves);
 
         // Map should be completed.
-        assert!(*map.get_status() != map::Status::InProgress);
+        assert_ne!(*map.get_status(), map::Status::InProgress);
     }
 }

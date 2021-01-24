@@ -1,5 +1,3 @@
-extern crate rand;
-
 pub mod map;
 pub mod point;
 pub mod solver;

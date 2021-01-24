@@ -1,11 +1,14 @@
 //! This module contains tools for manipulating a puzzle map.
 
-use point::{self, Point};
+use crate::point::{self, Point};
+use crate::solver::{Move, MoveType};
 use rand;
-use solver::{Move, MoveType};
+use rand::seq::IteratorRandom;
+use rand::thread_rng;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::io::{self, Write};
+use std::iter::FromIterator;
 use std::vec::Vec;
 
 /// Represents the completion state of a puzzle.
@@ -75,7 +78,7 @@ impl Map {
     }
 
     // Write an ascii representation of the current map state to `writer`.
-    pub fn print(&self, writer: &mut Write, revealed: bool) -> io::Result<()> {
+    pub fn print(&self, writer: &mut dyn Write, revealed: bool) -> io::Result<()> {
         for i in 0..self.get_tiles().len() {
             if (i % self.width as usize) == 0 {
                 write!(writer, "\n")?;
@@ -220,7 +223,7 @@ pub fn generate_map_with_difficulty(width: u16, height: u16, difficulty: u8, cli
             value: 0,
             mine: false,
             flagged: false,
-            flipped: false
+            flipped: false,
         };
         (width * height) as usize
     ];
@@ -258,6 +261,21 @@ pub fn generate_map_with_difficulty(width: u16, height: u16, difficulty: u8, cli
     map
 }
 
+fn generate_mines_unchecked(width: u16, height: u16, total: u32) -> Vec<Point> {
+    (0..width)
+        .flat_map(|i| (0..height).map(move |j| Point { x: i, y: j }))
+        .choose_multiple(&mut thread_rng(), total as usize)
+}
+
+/// Generate a map based on a given `total` number of mines and initial `click`.
+pub fn generate_map_with_total(width: u16, height: u16, total: u32, click: Point) -> Map {
+    let mut mines = generate_mines_unchecked(width, height, total);
+    while mines.contains(&click) {
+        mines = generate_mines_unchecked(width, height, total)
+    }
+    generate_map_with_mines(width, height, HashSet::from_iter(mines.into_iter()))
+}
+
 /// Generate a map with given mine locations.
 pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -> Map {
     // Initialise a vector of empty tiles.
@@ -266,7 +284,7 @@ pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -
             value: 0,
             mine: false,
             flagged: false,
-            flipped: false
+            flipped: false,
         };
         width as usize * height as usize
     ];
@@ -302,12 +320,8 @@ pub fn generate_map_with_mines(width: u16, height: u16, mines: HashSet<Point>) -
 
 #[cfg(test)]
 mod tests {
-    use map;
-    use point;
-    use solver;
-    use std::collections::HashSet;
-    use std::collections::VecDeque;
-    use std::str;
+    use super::*;
+    use crate::{map, solver};
 
     #[test]
     fn test_generate_puzzle() {
@@ -324,6 +338,20 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_puzzle_total() {
+        // Generate a puzzle with 100 difficulty.
+        let map = map::generate_map_with_total(10, 10, 10, point::Point { x: 5, y: 5 });
+
+        // Dimensions should be 10x10, size 100.
+        assert_eq!(10, map.get_width());
+        assert_eq!(10, map.get_height());
+        assert_eq!(100, map.get_size());
+
+        // Should have at least 5 mines.
+        assert_eq!(map.get_mines_remaining(), 10);
+    }
+
+    #[test]
     fn test_mine_flip() {
         // Define mine positions.
         let mines: HashSet<point::Point> = [
@@ -332,9 +360,10 @@ mod tests {
             point::Point { x: 1, y: 1 },
             point::Point { x: 2, y: 2 },
             point::Point { x: 4, y: 4 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Create map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
@@ -358,9 +387,10 @@ mod tests {
             point::Point { x: 2, y: 2 },
             point::Point { x: 3, y: 3 },
             point::Point { x: 4, y: 4 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Create map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
@@ -390,7 +420,7 @@ mod tests {
         assert!(map.get_tiles_flipped() > 0);
 
         // The first click should never fail the map.
-        assert!(*map.get_status() != map::Status::Failed);
+        assert_ne!(*map.get_status(), map::Status::Failed);
     }
 
     #[test]
@@ -481,9 +511,10 @@ mod tests {
             point::Point { x: 2, y: 2 },
             point::Point { x: 3, y: 3 },
             point::Point { x: 4, y: 4 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Create map with these mines.
         let mut map = map::generate_map_with_mines(5, 5, mines);
@@ -514,9 +545,10 @@ mod tests {
                 position: point::Point { x: 3, y: 0 },
                 move_type: solver::MoveType::Flip,
             },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Apply the list of moves
         map.apply_moves(&moves);
@@ -526,7 +558,7 @@ mod tests {
         map.print(&mut output, false).unwrap();
 
         // Convert to string for comparison.
-        let string = str::from_utf8(&output).unwrap();
+        let string = std::str::from_utf8(&output).unwrap();
 
         // Check the string matches the expected output.
         assert_eq!("\n##100\n##210\n###21\n#^###\n#####\n", string);
@@ -561,9 +593,10 @@ mod tests {
             point::Point { x: 4, y: 8 },
             point::Point { x: 3, y: 9 },
             point::Point { x: 8, y: 9 },
-        ].iter()
-            .cloned()
-            .collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         // Generate a map with these mines.
         let mut map = map::generate_map_with_mines(10, 10, mines);
@@ -580,7 +613,7 @@ mod tests {
         map.print(&mut output, false).unwrap();
 
         // Convert to string for comparison.
-        let string = str::from_utf8(&output).unwrap();
+        let string = std::str::from_utf8(&output).unwrap();
 
         // Check the string matches the expected output.
         assert_eq!(
